@@ -129,3 +129,12 @@ async function sendEventEmbed(channel, title) {
     await activeEvent.message.edit({ embeds: [updated] });
   }
 }
+
+// EXPRESS KEEP ALIVE
+const app = express();
+const port = 3000;
+app.get("/", (req, res) => res.send("Bot çalışıyor!"));
+app.listen(port, () => console.log(`Web server ${port} portunda aktif.`));
+
+
+client.login(TOKEN);
