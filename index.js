@@ -15,7 +15,6 @@ const {
   ButtonStyle,
   ActionRowBuilder,
   SlashCommandBuilder,
-  PermissionFlagsBits,
   REST,
   Routes,
 } = require("discord.js");
@@ -39,7 +38,7 @@ const CHANNEL_ID = process.env.CHANNEL_ID;
 let activeEvent = null;
 
 // --------------------------------------------
-//  SLASH COMMAND (ONLY SPECIFIC ROLE CAN USE)
+//  SLASH COMMAND (ONLY LEADERS ROLE CAN USE)
 // --------------------------------------------
 client.once("ready", async () => {
   console.log(`Bot logged in as ${client.user.tag}`);
@@ -67,12 +66,12 @@ client.once("ready", async () => {
 });
 
 // --------------------------------------------------
-//  EVERY DAY EVERY HOUR AT :30 (AUTOMATIC EVENT)
+//  EVERY DAY EVERY HOUR AT :30 (AUTO EVENT)
 // --------------------------------------------------
 cron.schedule("30 * * * *", async () => {
   try {
     const channel = await client.channels.fetch(CHANNEL_ID);
-    console.log("Automatic 30-minute event sent.");
+    console.log("Automatic event sent at :30");
     sendEventEmbed(channel, "AUTO EVENT");
   } catch (e) {
     console.log("Auto event error:", e);
@@ -86,8 +85,8 @@ client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== "createevent") return;
 
-  // ROLE CHECK
-  const REQUIRED_ROLE = "LEADERS"; // BURAYI DEĞİŞTİR
+  // ROLE CHECK ----------------------------
+  const REQUIRED_ROLE = "Leaders"; // ***Sunucudaki rolün gerçek adı***
 
   if (!interaction.member.roles.cache.some(r => r.name === REQUIRED_ROLE)) {
     return interaction.reply({
@@ -96,8 +95,10 @@ client.on("interactionCreate", async (interaction) => {
     });
   }
 
+  // ---------------------------------------
+
   const title = interaction.options.getString("title");
-  const inputTime = interaction.options.getString("time"); // "23:02"
+  const inputTime = interaction.options.getString("time"); // HH:MM
 
   if (!/^\d\d:\d\d$/.test(inputTime)) {
     return interaction.reply({ content: "Invalid time format. Use HH:MM", ephemeral: true });
@@ -106,7 +107,6 @@ client.on("interactionCreate", async (interaction) => {
   const [h, m] = inputTime.split(":").map(Number);
   const now = new Date();
   const target = new Date();
-
   target.setHours(h, m, 0, 0);
 
   if (target < now) {
@@ -143,12 +143,9 @@ async function sendEventEmbed(channel, title) {
 
   const row = new ActionRowBuilder().addComponents(joinButton, leaveButton);
 
-  // -----------------------------
-  //  ESPORTS DESIGN EMBED
-  // -----------------------------
   const embed = new EmbedBuilder()
     .setColor("#0d0d0d")
-    .setThumbnail("https://i.hizliresim.com/sbpz118.png") // LOGO
+    .setThumbnail("https://i.hizliresim.com/sbpz118.png")
     .setTitle(`🔥 ${title.toUpperCase()} — INFORMAL EVENT`)
     .setDescription(
 `​\`\`\`diff
@@ -157,24 +154,20 @@ async function sendEventEmbed(channel, title) {
 
 **Registration is now OPEN!**
 Click buttons below to join or leave the event roster.
-
 ────────────────────────`
     )
     .addFields(
       {
         name: "**🏆 MAIN ROSTER (10 Slots)**",
-        value: "_No players yet_",
-        inline: false
+        value: "_No players yet_"
       },
       {
         name: "────────────────────────",
-        value: "\u200b",
-        inline: false
+        value: "\u200b"
       },
       {
         name: "**📥 BACKUP ROSTER (5 Slots)**",
-        value: "_Empty_",
-        inline: false
+        value: "_Empty_"
       }
     )
     .setFooter({ text: "Santana Family" })
@@ -205,9 +198,7 @@ Click buttons below to join or leave the event roster.
 
       if (participants.length < 10) participants.push({ id, name });
       else if (backups.length < 5) backups.push({ id, name });
-      else {
-        return interaction.reply({ content: "All rosters are full!", ephemeral: true });
-      }
+      else return interaction.reply({ content: "All rosters are full!", ephemeral: true });
     }
 
     if (interaction.customId === "leave") {
