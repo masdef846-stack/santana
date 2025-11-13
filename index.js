@@ -27,7 +27,7 @@ const client = new Client({
 
 let activeEvent = null;
 
-// ---------- BİTİRME FONKSİYONU ----------
+// ---------- END EVENT ----------
 async function endEvent(endTitle, endDesc) {
   if (!activeEvent) return;
 
@@ -42,11 +42,11 @@ async function endEvent(endTitle, endDesc) {
 
 // ---------- BOT READY ----------
 client.once("ready", () => {
-  console.log(`${client.user.tag} aktif!`);
+  console.log(`${client.user.tag} is online!`);
 
   cron.schedule("30 * * * *", async () => {
     const channel = await client.channels.fetch(CHANNEL_ID);
-    startEvent(channel, "🚀 Informal Event", "🟩 Katıl — 🟥 Çık");
+    startEvent(channel, "⚡ Informal Activity", "🟢 Join — 🔴 Leave");
   });
 });
 
@@ -57,31 +57,30 @@ client.on("messageCreate", async (message) => {
   const command = args.shift().toLowerCase();
 
   if (command === "!createevent") {
-    if (activeEvent) return message.reply("⚠️ Zaten aktif bir etkinlik var!");
+    if (activeEvent) return message.reply("⚠️ There is already an active event!");
 
-    const title = args[0] ? args[0].replaceAll("_", " ") : "🚀 Custom Event";
-    const desc = args.slice(1).join(" ") || "🟩 Katıl — 🟥 Çık";
+    const title = args[0] ? args[0].replaceAll("_", " ") : "⚡ Custom Activity";
+    const desc = args.slice(1).join(" ") || "🟢 Join — 🔴 Leave";
 
     startEvent(message.channel, title, desc);
-    message.reply("✅ Etkinlik oluşturuldu!");
+    message.reply("✅ Event created!");
   }
 
   if (command === "!cancel") {
-    if (!activeEvent) return message.reply("❌ Aktif etkinlik yok!");
-    await endEvent("🚫 Etkinlik iptal edildi!", "Yönetici tarafından kapatıldı ❌");
-    message.reply("🛑 Etkinlik iptal edildi!");
+    if (!activeEvent) return message.reply("❌ No active event exists!");
+    await endEvent("🚫 Event Cancelled", "Closed by an authorized user.");
+    message.reply("🛑 Event cancelled!");
   }
 });
 
 // =========================================
-//          START EVENT — TASARIMLI
+//          START EVENT — PREMIUM THEME
 // =========================================
 async function startEvent(channel, title, description) {
   if (activeEvent) return;
 
   const guild = channel.guild;
 
-  // Informal rol ID → 1373714215394873706
   const informalRole = guild.roles.cache.get("1373714215394873706");
 
   let participants = informalRole
@@ -90,49 +89,46 @@ async function startEvent(channel, title, description) {
 
   const joinButton = new ButtonBuilder()
     .setCustomId("join")
-    .setLabel("Katıl 🟩")
+    .setLabel("Join 🟢")
     .setStyle(ButtonStyle.Success);
 
   const leaveButton = new ButtonBuilder()
     .setCustomId("leave")
-    .setLabel("Çık 🟥")
+    .setLabel("Leave 🔴")
     .setStyle(ButtonStyle.Danger);
 
   const row = new ActionRowBuilder().addComponents(joinButton, leaveButton);
 
   const rosterText = participants.length
     ? participants.map((p, i) => `${i + 1}. <@${p.id}>`).join("\n")
-    : "_Kimse katılmadı._";
+    : "_No participants yet._";
 
   // ============================================
-  //       GELİŞMİŞ TASARIMLI EMBED
+  //   ⬇⬇ NEW ULTRA CLEAN & PREMIUM THEME ⬇⬇
   // ============================================
 
   const embed = new EmbedBuilder()
-    .setColor("#2f3136")
+    .setColor("#2b2d31") // Discord slate grey
     .setThumbnail("https://i.hizliresim.com/sbpz118.png")
     .setAuthor({
-      name: "🔥 Informal Event System",
-      iconURL: "https://i.hizliresim.com/sbpz118.png",
+      name: "Informal Activity System",
+      iconURL: "https://i.hizliresim.com/sbpz118.png"
     })
+    .setTitle(`✨ ${title}`)
     .setDescription(
-      "```fix\n      ★ INFORMAL EVENT ★\n```\n" +
-      `**📢 <@&1373714215394873706>**\n` +
-      "──────────────────────────\n" +
-      `📌 **Açıklama:** ${description}\n` +
+      "```yaml\n   Informal - Activity Panel\n```\n" +
+      `**🔔 Notification Role:** <@&1373714215394873706>\n\n` +
+      `**📘 Description:**\n${description}\n` +
       "──────────────────────────"
     )
     .addFields({
-      name: `🏆 Roster (${participants.length}/10)`,
-      value:
-        participants.length
-          ? rosterText
-          : "_Henüz kimse katılmadı._",
+      name: `🏆 Participant List (${participants.length}/10)`,
+      value: rosterText,
       inline: false
     })
     .setFooter({
-      text: "Santana Family — Event System",
-      iconURL: "https://i.hizliresim.com/sbpz118.png"
+      text: "Santana Family • Activity System",
+      iconURL: "https://i.hizliresim.com/sbpz118.png",
     })
     .setTimestamp();
 
@@ -153,10 +149,10 @@ async function startEvent(channel, title, description) {
 
     if (interaction.customId === "join") {
       if (activeEvent.participants.find(p => p.id === id)) {
-        return interaction.reply({ content: "Zaten listedesin!", ephemeral: true });
+        return interaction.reply({ content: "You are already in the list!", ephemeral: true });
       }
       if (activeEvent.participants.length >= 10) {
-        return interaction.reply({ content: "Liste dolu!", ephemeral: true });
+        return interaction.reply({ content: "The participant list is full!", ephemeral: true });
       }
 
       activeEvent.participants.push({ id });
@@ -167,22 +163,22 @@ async function startEvent(channel, title, description) {
     }
 
     await updateEvent();
-    interaction.reply({ content: "Güncellendi!", ephemeral: true });
+    interaction.reply({ content: "Updated!", ephemeral: true });
   });
 
   collector.on("end", async () => {
-    if (activeEvent) await endEvent("⌛ Süre Doldu", "Etkinlik kapatıldı.");
+    if (activeEvent) await endEvent("⌛ Time Expired", "The event is now closed.");
   });
 
   // ---------- UPDATE ----------
   async function updateEvent() {
     const roster = activeEvent.participants.length
       ? activeEvent.participants.map((p, i) => `${i + 1}. <@${p.id}>`).join("\n")
-      : "_Kimse katılmadı._";
+      : "_No participants yet._";
 
     const updatedEmbed = EmbedBuilder.from(activeEvent.baseEmbed)
       .setFields({
-        name: `🏆 Roster (${activeEvent.participants.length}/10)`,
+        name: `🏆 Participant List (${activeEvent.participants.length}/10)`,
         value: roster
       });
 
@@ -192,7 +188,7 @@ async function startEvent(channel, title, description) {
 
 // ---------- EXPRESS ----------
 const app = express();
-app.get("/", (req, res) => res.send("Bot çalışıyor!"));
-app.listen(3000, () => console.log("Web server aktif."));
+app.get("/", (req, res) => res.send("Bot is running!"));
+app.listen(3000, () => console.log("Web server active."));
 
 client.login(TOKEN);
