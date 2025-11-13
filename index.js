@@ -1,373 +1,257 @@
-// index.js - Santana Event System (Full)
-// Requirements: node 18+, discord.js v14, express, node-cron
-// Environment variables required: TOKEN, CLIENT_ID, GUILD_ID, CHANNEL_ID (optional)
+// ---------------------------------------------------------
+//  Santana Event System — Full Final Version (Slash + Auto 30)
+// ---------------------------------------------------------
 
+require("dotenv").config();
 const express = require("express");
 const cron = require("node-cron");
+
 const {
   Client,
   GatewayIntentBits,
   Partials,
   EmbedBuilder,
-  ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ActionRowBuilder,
   SlashCommandBuilder,
+  PermissionFlagsBits,
   REST,
   Routes,
 } = require("discord.js");
-require("dotenv").config();
 
-// ---------- CONFIG ----------
-const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID; // bot application id
-const GUILD_ID = process.env.GUILD_ID; // optional but recommended for quick registration
-const CHANNEL_ID = process.env.CHANNEL_ID || null; // fallback channel id
-const DEFAULT_LOGO = "https://i.hizliresim.com/sbpz118.png"; // replace if you want
-
-if (!TOKEN || !CLIENT_ID || !GUILD_ID) {
-  console.error("Please set TOKEN, CLIENT_ID and GUILD_ID environment variables.");
-  process.exit(1);
-}
-
-// ---------- CLIENT ----------
+// ------------------------
+//  CLIENT
+// ------------------------
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
   ],
-  partials: [Partials.Channel, Partials.Message],
+  partials: [Partials.Channel],
 });
 
-client.on("ready", () => {
-  console.log(`✅ ${client.user.tag} ready.`);
-});
+const TOKEN = process.env.TOKEN;
+const CHANNEL_ID = process.env.CHANNEL_ID;
 
-// ---------- GLOBAL STATE ----------
-let activeEvent = null; // currently posted event message + rosters
-const scheduledEvents = []; // { id, title, hour (0-23), channelId (optional) }
+let activeEvent = null;
 
-// ---------- REGISTER SLASH COMMANDS ----------
-const rest = new REST({ version: "10" }).setToken(TOKEN);
+// --------------------------------------------
+//  SLASH COMMAND (ONLY SPECIFIC ROLE CAN USE)
+// --------------------------------------------
+client.once("ready", async () => {
+  console.log(`Bot logged in as ${client.user.tag}`);
 
-async function registerCommands() {
   const commands = [
     new SlashCommandBuilder()
       .setName("createevent")
-      .setDescription("Create an event that triggers daily at HH:30")
-      .addStringOption((o) =>
-        o.setName("title").setDescription("Event title").setRequired(true)
-      )
-      .addStringOption((o) =>
-        o
-          .setName("time")
-          .setDescription("Time format HH:MM (minutes ignored, event fires at HH:30)")
+      .setDescription("Creates a one-time event to be sent at a specific time.")
+      .addStringOption(opt =>
+        opt.setName("title")
+          .setDescription("Event title")
           .setRequired(true)
-      ),
-    new SlashCommandBuilder()
-      .setName("closeevent")
-      .setDescription("Force close the current active event"),
-    new SlashCommandBuilder()
-      .setName("resetevent")
-      .setDescription("Reset the current event rosters (clear participants/backups)"),
-    new SlashCommandBuilder()
-      .setName("listevents")
-      .setDescription("List scheduled events"),
-    new SlashCommandBuilder()
-      .setName("cancelevent")
-      .setDescription("Cancel a scheduled event by id")
-      .addStringOption((o) =>
-        o.setName("id").setDescription("Scheduled event id").setRequired(true)
-      ),
-  ].map((c) => c.toJSON());
+      )
+      .addStringOption(opt =>
+        opt.setName("time")
+          .setDescription("Format: HH:MM")
+          .setRequired(true)
+      )
+  ].map(c => c.toJSON());
 
+  const rest = new REST({ version: "10" }).setToken(TOKEN);
+
+  await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+  console.log("Slash commands registered.");
+});
+
+// --------------------------------------------------
+//  EVERY DAY EVERY HOUR AT :30 (AUTOMATIC EVENT)
+// --------------------------------------------------
+cron.schedule("30 * * * *", async () => {
   try {
-    // register to a guild for instant updates (recommended). For global: use applicationCommands route
-    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
-      body: commands,
-    });
-    console.log("Slash commands registered.");
-  } catch (err) {
-    console.error("Failed to register commands:", err);
+    const channel = await client.channels.fetch(CHANNEL_ID);
+    console.log("Automatic 30-minute event sent.");
+    sendEventEmbed(channel, "AUTO EVENT");
+  } catch (e) {
+    console.log("Auto event error:", e);
   }
-}
-registerCommands();
+});
 
-// ---------- HELPERS ----------
-function parseHourFromTimeString(ts) {
-  // expects "HH:MM" (24h). Return hour number 0-23 or null if invalid.
-  if (!ts || typeof ts !== "string") return null;
-  const m = ts.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return null;
-  let hh = parseInt(m[1], 10);
-  if (isNaN(hh) || hh < 0 || hh > 23) return null;
-  return hh;
-}
+// --------------------------------------------------
+//  SLASH COMMAND EXECUTION
+// --------------------------------------------------
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+  if (interaction.commandName !== "createevent") return;
 
-function makeEmbed(title, participants, backups) {
-  const mainList =
-    participants && participants.length
-      ? participants.map((p, i) => `**${i + 1}.** <@${p.id}>`).join("\n")
-      : "_No players yet_";
+  // ROLE CHECK
+  const REQUIRED_ROLE = "LEADERS"; // BURAYI DEĞİŞTİR
 
-  const backupList =
-    backups && backups.length
-      ? backups.map((p, i) => `**${i + 1}.** <@${p.id}>`).join("\n")
-      : "_Empty_";
+  if (!interaction.member.roles.cache.some(r => r.name === REQUIRED_ROLE)) {
+    return interaction.reply({
+      content: "❌ You do not have permission to use this command.",
+      ephemeral: true
+    });
+  }
 
-  // Esports-style dark embed with red title and separators
+  const title = interaction.options.getString("title");
+  const inputTime = interaction.options.getString("time"); // "23:02"
+
+  if (!/^\d\d:\d\d$/.test(inputTime)) {
+    return interaction.reply({ content: "Invalid time format. Use HH:MM", ephemeral: true });
+  }
+
+  const [h, m] = inputTime.split(":").map(Number);
+  const now = new Date();
+  const target = new Date();
+
+  target.setHours(h, m, 0, 0);
+
+  if (target < now) {
+    return interaction.reply({ content: "Time already passed today.", ephemeral: true });
+  }
+
+  interaction.reply({
+    content: `Event scheduled at **${inputTime}**.`,
+    ephemeral: true
+  });
+
+  setTimeout(async () => {
+    const channel = await client.channels.fetch(CHANNEL_ID);
+    sendEventEmbed(channel, title);
+  }, target - now);
+});
+
+// --------------------------------------------------
+//  EVENT EMBED SYSTEM
+// --------------------------------------------------
+async function sendEventEmbed(channel, title) {
+  let participants = [];
+  let backups = [];
+
+  const joinButton = new ButtonBuilder()
+    .setCustomId("join")
+    .setLabel("Join 🟩")
+    .setStyle(ButtonStyle.Success);
+
+  const leaveButton = new ButtonBuilder()
+    .setCustomId("leave")
+    .setLabel("Leave 🟥")
+    .setStyle(ButtonStyle.Danger);
+
+  const row = new ActionRowBuilder().addComponents(joinButton, leaveButton);
+
+  // -----------------------------
+  //  ESPORTS DESIGN EMBED
+  // -----------------------------
   const embed = new EmbedBuilder()
-    .setColor("#0b0b0b")
-    .setThumbnail(DEFAULT_LOGO)
-    .setTitle(`🔥 ${String(title).toUpperCase()} — INFORMAL EVENT`)
+    .setColor("#0d0d0d")
+    .setThumbnail("https://i.hizliresim.com/sbpz118.png") // LOGO
+    .setTitle(`🔥 ${title.toUpperCase()} — INFORMAL EVENT`)
     .setDescription(
-      "```diff\n+ █▀▀▀▀▀▀▀▀▀ EVENT ANNOUNCEMENT ▀▀▀▀▀▀▀▀▀█\n```\n" +
-        "**Registration is now OPEN!**\n" +
-        "Click the buttons below to join or leave the roster.\n\n" +
-        "────────────────────────"
+`​\`\`\`diff
++ █▀▀▀▀▀▀▀▀▀ EVENT ANNOUNCEMENT ▀▀▀▀▀▀▀▀▀█
+\`\`\`
+
+**Registration is now OPEN!**
+Click buttons below to join or leave the event roster.
+
+────────────────────────`
     )
     .addFields(
       {
-        name: "__🏆 MAIN ROSTER (10 Slots)__",
-        value: mainList,
-        inline: false,
+        name: "**🏆 MAIN ROSTER (10 Slots)**",
+        value: "_No players yet_",
+        inline: false
       },
       {
         name: "────────────────────────",
         value: "\u200b",
-        inline: false,
+        inline: false
       },
       {
-        name: "__📥 BACKUP ROSTER (5 Slots)__",
-        value: backupList,
-        inline: false,
+        name: "**📥 BACKUP ROSTER (5 Slots)**",
+        value: "_Empty_",
+        inline: false
       }
     )
-    .setFooter({ text: "Santana Family — Event System" })
+    .setFooter({ text: "Santana Family" })
     .setTimestamp();
 
-  return embed;
-}
+  const msg = await channel.send({ embeds: [embed], components: [row] });
 
-// ---------- SLASH INTERACTIONS ----------
-client.on("interactionCreate", async (interaction) => {
-  try {
-    if (!interaction.isChatInputCommand()) return;
+  activeEvent = {
+    message: msg,
+    participants,
+    backups,
+    title,
+    embedBase: embed
+  };
 
-    const cmd = interaction.commandName;
+  const collector = msg.createMessageComponentCollector();
 
-    // CREATEEVENT
-    if (cmd === "createevent") {
-      const title = interaction.options.getString("title");
-      const time = interaction.options.getString("time"); // "HH:MM"
-      const hour = parseHourFromTimeString(time);
+  collector.on("collect", async (interaction) => {
+    if (!interaction.isButton()) return;
 
-      if (hour === null) {
-        return interaction.reply({
-          content: "Invalid time format. Use `HH:MM` (24-hour). Example: `23:00`.",
-          ephemeral: true,
-        });
+    const id = interaction.user.id;
+    const name = interaction.member.displayName;
+
+    if (interaction.customId === "join") {
+      if (participants.some(p => p.id === id) || backups.some(p => p.id === id)) {
+        return interaction.reply({ content: "You're already listed.", ephemeral: true });
       }
 
-      // create scheduled event
-      const id = `${Date.now().toString(36)}-${Math.floor(Math.random() * 9999)}`;
-      const channelId = interaction.channelId || CHANNEL_ID || null;
-      scheduledEvents.push({ id, title, hour, channelId });
-      await interaction.reply({
-        content: `Scheduled event **${title}** daily at **${String(hour).padStart(2, "0")}:30** (id: \`${id}\`).`,
-        ephemeral: true,
-      });
-      return;
-    }
-
-    // CLOSEEVENT - closes active posted event
-    if (cmd === "closeevent") {
-      if (!activeEvent) {
-        return interaction.reply({ content: "There is no active event to close.", ephemeral: true });
+      if (participants.length < 10) participants.push({ id, name });
+      else if (backups.length < 5) backups.push({ id, name });
+      else {
+        return interaction.reply({ content: "All rosters are full!", ephemeral: true });
       }
-      // edit embed to closed state and remove components
-      const closedEmbed = EmbedBuilder.from(activeEvent.embedBase)
-        .setTitle(`🚫 ${activeEvent.title.toUpperCase()} — CLOSED`)
-        .setColor("#8b0000")
-        .setDescription("This event has been closed by an admin.");
-      await activeEvent.message.edit({ embeds: [closedEmbed], components: [] });
-      activeEvent = null;
-      return interaction.reply({ content: "Active event closed.", ephemeral: true });
     }
 
-    // RESETEVENT - clear rosters but keep message/components
-    if (cmd === "resetevent") {
-      if (!activeEvent) {
-        return interaction.reply({ content: "No active event to reset.", ephemeral: true });
+    if (interaction.customId === "leave") {
+      participants = participants.filter(p => p.id !== id);
+      backups = backups.filter(p => p.id !== id);
+    }
+
+    updateEmbed();
+    interaction.reply({ content: "Updated!", ephemeral: true });
+  });
+
+  async function updateEmbed() {
+    const mainList = participants.length
+      ? participants.map((p, i) => `**${i + 1}.** <@${p.id}>`).join("\n")
+      : "_No players yet_";
+
+    const backupList = backups.length
+      ? backups.map((p, i) => `**${i + 1}.** <@${p.id}>`).join("\n")
+      : "_Empty_";
+
+    const updated = EmbedBuilder.from(embed).setFields(
+      {
+        name: "**🏆 MAIN ROSTER (10 Slots)**",
+        value: mainList
+      },
+      {
+        name: "────────────────────────",
+        value: "\u200b"
+      },
+      {
+        name: "**📥 BACKUP ROSTER (5 Slots)**",
+        value: backupList
       }
-      activeEvent.participants = [];
-      activeEvent.backups = [];
-      const resetEmbed = makeEmbed(activeEvent.title, [], []);
-      // keep components
-      await activeEvent.message.edit({ embeds: [resetEmbed] });
-      activeEvent.embedBase = resetEmbed;
-      return interaction.reply({ content: "Event rosters reset.", ephemeral: true });
-    }
+    );
 
-    // LISTEVENTS
-    if (cmd === "listevents") {
-      if (scheduledEvents.length === 0) {
-        return interaction.reply({ content: "No scheduled events.", ephemeral: true });
-      }
-      const lines = scheduledEvents.map((s) => `• id:\`${s.id}\` — **${s.title}** @ **${String(s.hour).padStart(2, "0")}:30**`);
-      return interaction.reply({ content: lines.join("\n"), ephemeral: true });
-    }
-
-    // CANCELEVENT
-    if (cmd === "cancelevent") {
-      const id = interaction.options.getString("id");
-      const idx = scheduledEvents.findIndex((s) => s.id === id);
-      if (idx === -1) {
-        return interaction.reply({ content: `No scheduled event found with id \`${id}\`.`, ephemeral: true });
-      }
-      scheduledEvents.splice(idx, 1);
-      return interaction.reply({ content: `Scheduled event \`${id}\` cancelled.`, ephemeral: true });
-    }
-  } catch (err) {
-    console.error("Interaction error:", err);
-    if (interaction.replied || interaction.deferred) {
-      try { await interaction.followUp({ content: "There was an error processing the command.", ephemeral: true }); } catch {}
-    } else {
-      try { await interaction.reply({ content: "There was an error processing the command.", ephemeral: true }); } catch {}
-    }
-  }
-});
-
-// ---------- CORE: send event embed when cron triggers ----------
-async function postScheduledEvent(sched) {
-  // if an activeEvent exists, skip posting to avoid duplicates
-  if (activeEvent) {
-    console.log("Skipped posting because an active event is already running.");
-    return;
-  }
-
-  try {
-    const channelIdToUse = sched.channelId || CHANNEL_ID;
-    if (!channelIdToUse) {
-      console.warn("No channelId available for scheduled event:", sched);
-      return;
-    }
-    const channel = await client.channels.fetch(channelIdToUse).catch((e) => {
-      console.error("Failed to fetch channel:", e);
-      return null;
-    });
-    if (!channel) return;
-
-    // initial empty rosters
-    const participants = [];
-    const backups = [];
-
-    const joinButton = new ButtonBuilder().setCustomId("join").setLabel("Join 🟩").setStyle(ButtonStyle.Success);
-    const leaveButton = new ButtonBuilder().setCustomId("leave").setLabel("Leave 🟥").setStyle(ButtonStyle.Danger);
-    const row = new ActionRowBuilder().addComponents(joinButton, leaveButton);
-
-    const embedBase = makeEmbed(sched.title, participants, backups);
-    const msg = await channel.send({ embeds: [embedBase], components: [row] });
-
-    activeEvent = {
-      id: sched.id,
-      message: msg,
-      participants,
-      backups,
-      title: sched.title,
-      embedBase,
-      components: [row],
-    };
-
-    // collector
-    const collector = msg.createMessageComponentCollector({ time: 1000 * 60 * 60 * 3 }); // 3 hours default
-    collector.on("collect", async (interaction) => {
-      try {
-        if (!interaction.isButton()) return;
-        const uid = interaction.user.id;
-        const displayName = interaction.member ? interaction.member.displayName : interaction.user.username;
-
-        if (interaction.customId === "join") {
-          if (activeEvent.participants.some((p) => p.id === uid) || activeEvent.backups.some((p) => p.id === uid)) {
-            return interaction.reply({ content: "You are already registered!", ephemeral: true });
-          }
-          if (activeEvent.participants.length < 10) {
-            activeEvent.participants.push({ id: uid, name: displayName });
-          } else if (activeEvent.backups.length < 5) {
-            activeEvent.backups.push({ id: uid, name: displayName });
-          } else {
-            return interaction.reply({ content: "Both main and backup rosters are full!", ephemeral: true });
-          }
-        }
-
-        if (interaction.customId === "leave") {
-          activeEvent.participants = activeEvent.participants.filter((p) => p.id !== uid);
-          activeEvent.backups = activeEvent.backups.filter((p) => p.id !== uid);
-        }
-
-        // update embed
-        const updatedEmbed = makeEmbed(activeEvent.title, activeEvent.participants, activeEvent.backups);
-        activeEvent.embedBase = updatedEmbed;
-        await activeEvent.message.edit({ embeds: [updatedEmbed], components: activeEvent.components });
-        await interaction.reply({ content: "Updated!", ephemeral: true });
-      } catch (e) {
-        console.error("Collector handling error:", e);
-        try { await interaction.reply({ content: "An error occurred.", ephemeral: true }); } catch {}
-      }
-    });
-
-    collector.on("end", async () => {
-      // auto-close after collector time
-      if (!activeEvent) return;
-      try {
-        const finalEmbed = EmbedBuilder.from(activeEvent.embedBase)
-          .setTitle(`⏰ ${activeEvent.title.toUpperCase()} — CLOSED`)
-          .setColor("#8b0000")
-          .setDescription("This event has ended (auto-closed).");
-        await activeEvent.message.edit({ embeds: [finalEmbed], components: [] });
-      } catch (e) {
-        console.error("Error closing event after collector:", e);
-      } finally {
-        activeEvent = null;
-      }
-    });
-  } catch (e) {
-    console.error("Failed to post scheduled event:", e);
+    await msg.edit({ embeds: [updated], components: [row] });
   }
 }
 
-// Cron: run every minute at 30th second of minute? We need "every hour at :30" so:
-cron.schedule("30 * * * *", async () => {
-  try {
-    const now = new Date();
-    const currentHour = now.getHours(); // 0-23
-    // for every scheduled event that matches current hour, post it
-    const toPost = scheduledEvents.filter((s) => s.hour === currentHour);
-    for (const s of toPost) {
-      await postScheduledEvent(s);
-    }
-  } catch (e) {
-    console.error("Cron error:", e);
-  }
-});
-
-// ---------- EXPRESS KEEP-ALIVE ----------
+// ------------------------------
+//  KEEP ALIVE SERVER (FOR HOSTS)
+// ------------------------------
 const app = express();
-app.get("/", (req, res) => res.send("Bot is running."));
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Keep-alive server listening on ${port}`));
-
-// ---------- SAFE LOGGING ----------
-process.on("unhandledRejection", (err) => {
-  console.error("Unhandled promise rejection:", err);
-});
-
-// ---------- LOGIN ----------
-client.login(TOKEN).catch((e) => {
-  console.error("Failed to login:", e);
-  process.exit(1);
-});
-
+app.get("/", (req, res) => res.send("Bot running"));
+app.listen(3000, () => console.log("Keep-alive server on."));
 
 client.login(TOKEN);
