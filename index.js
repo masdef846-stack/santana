@@ -54,7 +54,7 @@ function makeEmbed(title, participants = [], backups = []) {
     .setThumbnail(DEFAULT_LOGO)
     .setTitle(`🔥 ${String(title).toUpperCase()} — INFORMAL EVENT`)
     .setDescription(
-      "```diff\n+ █▀▀▀▀▀▀▀▀▀ EVENT ANNOUNCEMENT ▀▀▀▀▀▀▀▀▀█\n```\n" +
+      "```diff\n+ █▀▀▀▀▀▀▀▀▀ INFORMAL ROSTER ▀▀▀▀▀▀▀▀▀█\n```\n" +
       "**Registration is now OPEN!**\nClick the buttons below to join or leave the roster.\n\n" +
       "────────────────────────"
     )
@@ -74,7 +74,7 @@ cron.schedule("30 * * * *", async () => {
     if (!channel) return;
 
     console.log("[CRON] Auto :30 event sent.");
-    await postPersistentEvent(channel, "AUTO EVENT");
+    await postPersistentEvent(channel, "");
   } catch (e) {
     console.error("Cron error:", e);
   }
