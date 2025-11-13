@@ -1,5 +1,5 @@
 // ---------------------------------------------------------
-//  Santana Event System — Full Final Version (Slash + Auto 30)
+//  Santana Event System — Full Final Version (NO ROLE CHECK)
 // ---------------------------------------------------------
 
 require("dotenv").config();
@@ -38,7 +38,7 @@ const CHANNEL_ID = process.env.CHANNEL_ID;
 let activeEvent = null;
 
 // --------------------------------------------
-//  SLASH COMMAND (ONLY LEADERS ROLE CAN USE)
+//  SLASH COMMAND
 // --------------------------------------------
 client.once("ready", async () => {
   console.log(`Bot logged in as ${client.user.tag}`);
@@ -79,26 +79,14 @@ cron.schedule("30 * * * *", async () => {
 });
 
 // --------------------------------------------------
-//  SLASH COMMAND EXECUTION
+//  SLASH COMMAND EXECUTION (NO ROLE CHECK)
 // --------------------------------------------------
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== "createevent") return;
 
-  // ROLE CHECK ----------------------------
-  const REQUIRED_ROLE = "Leaders"; // ***Sunucudaki rolün gerçek adı***
-
-  if (!interaction.member.roles.cache.some(r => r.name === REQUIRED_ROLE)) {
-    return interaction.reply({
-      content: "❌ You do not have permission to use this command.",
-      ephemeral: true
-    });
-  }
-
-  // ---------------------------------------
-
   const title = interaction.options.getString("title");
-  const inputTime = interaction.options.getString("time"); // HH:MM
+  const inputTime = interaction.options.getString("time");
 
   if (!/^\d\d:\d\d$/.test(inputTime)) {
     return interaction.reply({ content: "Invalid time format. Use HH:MM", ephemeral: true });
