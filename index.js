@@ -1,177 +1,131 @@
-const {
-  Client,
-  GatewayIntentBits,
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  Partials
-} = require("discord.js");
-const express = require("express");
-const cron = require("node-cron");
-
-require("dotenv").config();
-
-const TOKEN = process.env.TOKEN;
-const CHANNEL_ID = process.env.CHANNEL_ID;
-
-
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.MessageContent
-  ],
-  partials: [Partials.Message, Partials.Channel],
-});
-
-let activeEvent = null;
-
-client.once("ready", () => {
-  console.log(`${client.user.tag} aktif!`);
-  
-  // Her saatin 30. dakikasında otomatik etkinlik başlat
-  cron.schedule("30 * * * *", async () => {
-    const channel = await client.channels.fetch(CHANNEL_ID);
-    startEvent(channel, "🚀 Informal Event", "🟩 Katıl butonuna basarak listeye adını yazdır!\n🟥 Çık butonuyla listeden ayrılabilirsin.");
-  });
-});
-
-client.on("messageCreate", async (message) => {
-  if (!message.content.startsWith("!")) return;
-
-  const args = message.content.split(" ");
-  const command = args.shift().toLowerCase();
-
-  // 🔹 Manuel event oluşturma komutu
-  if (command === "!createevent") {
-    if (activeEvent) {
-      return message.reply("⚠️ Zaten aktif bir etkinlik var! Önce `!cancel` ile iptal et.");
-    }
-
-    const title = args[0] ? args[0].replaceAll("_", " ") : "🚀 Custom Event";
-    const description = args.slice(1).join(" ") || "🟩 Katıl butonuna basarak listeye adını yazdır!\n🟥 Çık butonuyla listeden ayrılabilirsin.";
-
-    startEvent(message.channel, title, description);
-    message.reply("✅ Etkinlik başarıyla oluşturuldu!");
-  }
-
-  // 🔹 Event iptal etme komutu
-  if (command === "!cancel") {
-    if (!activeEvent) return message.reply("❌ Aktif bir etkinlik yok!");
-    
-    await endEvent("🚫 Etkinlik iptal edildi!", "Manager tarafından iptal edildi ❌");
-    message.reply("🛑 Etkinlik başarıyla iptal edildi!");
-  }
-});
-
-// 🔧 Etkinlik başlatma fonksiyonu
-async function startEvent(channel, title, description) {
-  if (activeEvent) return;
+async function sendEventEmbed(channel, title) {
   let participants = [];
+  let backups = [];
 
   const joinButton = new ButtonBuilder()
     .setCustomId("join")
-    .setLabel("Katıl 🟩")
+    .setLabel("Join 🟩")
     .setStyle(ButtonStyle.Success);
 
   const leaveButton = new ButtonBuilder()
     .setCustomId("leave")
-    .setLabel("Çık 🟥")
+    .setLabel("Leave 🟥")
     .setStyle(ButtonStyle.Danger);
 
   const row = new ActionRowBuilder().addComponents(joinButton, leaveButton);
 
   const embed = new EmbedBuilder()
-    .setColor("#2b2d31")
-    .setTitle(`${title} — Registration Open!`)
-    .setDescription(description)
-    .addFields({ name: "🏆 Main Roster (0/10)", value: "_Henüz kimse katılmadı._" })
-    .setFooter({ text: "Kayıtlar 10 kişiyle kapanır. İyi oyunlar! 🎉" })
+    .setColor("#0d0d0d")
+    .setThumbnail("https://i.hizliresim.com/sbpz118.png") // LOGO BURAYA!
+    .setTitle(`🔥 ${title.toUpperCase()} — INFORMAL EVENT`)
+    .setDescription(
+      "```diff\n" +
+      "+ █▀▀▀▀▀▀▀▀▀ EVENT ANNOUNCEMENT ▀▀▀▀▀▀▀▀▀█\n" +
+      "```\n" +
+      "**Registration is now OPEN!**\n" +
+      "Use the buttons below to join or leave the roster.\n\n" +
+      "────────────────────────"
+    )
+    .addFields(
+      {
+        name: "**🏆 MAIN ROSTER (10 Slots)**",
+        value: "_No players yet_",
+        inline: false
+      },
+      {
+        name: "────────────────────────",
+        value: "\u200b",
+        inline: false
+      },
+      {
+        name: "**📥 BACKUP ROSTER (5 Slots)**",
+        value: "_Empty_",
+        inline: false
+      }
+    )
+    .setFooter({
+      text: "Santana Family"
+    })
     .setTimestamp();
 
-  const message = await channel.send({ embeds: [embed], components: [row] });
-  activeEvent = { message, participants };
+  const msg = await channel.send({ embeds: [embed], components: [row] });
 
-  const collector = message.createMessageComponentCollector({ time: 60 * 60 * 1000 }); // 1 saat açık kalır
+  activeEvent = {
+    message: msg,
+    participants,
+    backups,
+    title,
+    embedBase: embed
+  };
+
+  const collector = msg.createMessageComponentCollector();
 
   collector.on("collect", async (interaction) => {
     if (!interaction.isButton()) return;
-    const member = await interaction.guild.members.fetch(interaction.user.id);
 
+    const id = interaction.user.id;
+    const name = interaction.member.displayName;
+
+    // JOIN
     if (interaction.customId === "join") {
-      if (participants.find(p => p.id === member.id)) {
-        await interaction.reply({ content: "Zaten listedesin!", ephemeral: true });
-        return;
-      }
-      if (participants.length >= 10) {
-        await interaction.reply({ content: "Liste doldu! Katılım kapandı.", ephemeral: true });
-        return;
+      if (
+        activeEvent.participants.some((p) => p.id === id) ||
+        activeEvent.backups.some((p) => p.id === id)
+      ) {
+        return interaction.reply({ content: "You are already listed!", ephemeral: true });
       }
 
-      participants.push({ id: member.id, name: member.displayName });
-      await updateEventMessage();
-      await interaction.reply({ content: "Başarıyla listeye eklendin ✅", ephemeral: true });
-    }
-
-    if (interaction.customId === "leave") {
-      const index = participants.findIndex(p => p.id === member.id);
-      if (index === -1) {
-        await interaction.reply({ content: "Listede değilsin!", ephemeral: true });
-        return;
-      }
-      participants.splice(index, 1);
-      await updateEventMessage();
-      await interaction.reply({ content: "Listeden çıktın ❌", ephemeral: true });
-    }
-
-    async function updateEventMessage() {
-      const rosterText = participants
-        .map((p, i) => `${i + 1}. ${p.name}`)
-        .join("\n") || "_Henüz kimse katılmadı._";
-
-      const updatedEmbed = EmbedBuilder.from(embed)
-        .setFields({ name: `🏆 Informal Roster (${participants.length}/10)`, value: rosterText });
-
-      if (participants.length >= 10) {
-        const closedRow = new ActionRowBuilder().addComponents(
-          ButtonBuilder.from(joinButton).setDisabled(true),
-          ButtonBuilder.from(leaveButton).setDisabled(false)
-        );
-        updatedEmbed
-          .setTitle(`${title} — CLOSED ✅`)
-          .setDescription("🔴 Registration is closed!\nTüm slotlar doldu 🎉");
-
-        await message.edit({ embeds: [updatedEmbed], components: [closedRow] });
+      if (activeEvent.participants.length < 10) {
+        activeEvent.participants.push({ id, name });
+      } else if (activeEvent.backups.length < 5) {
+        activeEvent.backups.push({ id, name });
       } else {
-        await message.edit({ embeds: [updatedEmbed], components: [row] });
+        return interaction.reply({
+          content: "Main + Backup rosters are full!",
+          ephemeral: true
+        });
       }
     }
-  });
 
-  collector.on("end", async () => {
-    if (activeEvent) {
-      await endEvent("⏰ Süre doldu!", "Etkinlik otomatik olarak kapandı ⌛");
+    // LEAVE
+    if (interaction.customId === "leave") {
+      activeEvent.participants = activeEvent.participants.filter((p) => p.id !== id);
+      activeEvent.backups = activeEvent.backups.filter((p) => p.id !== id);
     }
+
+    updateEmbed();
+    interaction.reply({ content: "Updated!", ephemeral: true });
   });
 
-  // event bittiğinde mesajı düzenle
-  async function endEvent(endTitle, endDesc) {
-    const finalEmbed = EmbedBuilder.from(embed)
-      .setTitle(endTitle)
-      .setDescription(endDesc)
-      .setColor("#ff4747");
+  async function updateEmbed() {
+    const mainList =
+      activeEvent.participants.length > 0
+        ? activeEvent.participants.map((p, i) => `**${i + 1}.** <@${p.id}>`).join("\n")
+        : "_No players yet_";
 
-    await activeEvent.message.edit({ embeds: [finalEmbed], components: [] });
-    activeEvent = null;
+    const backupList =
+      activeEvent.backups.length > 0
+        ? activeEvent.backups.map((p, i) => `**${i + 1}.** <@${p.id}>`).join("\n")
+        : "_Empty_";
+
+    const updated = EmbedBuilder.from(activeEvent.embedBase).setFields(
+      {
+        name: "**🏆 MAIN ROSTER (10 Slots)**",
+        value: mainList,
+        inline: false
+      },
+      {
+        name: "────────────────────────",
+        value: "\u200b",
+        inline: false
+      },
+      {
+        name: "**📥 BACKUP ROSTER (5 Slots)**",
+        value: backupList,
+        inline: false
+      }
+    );
+
+    await activeEvent.message.edit({ embeds: [updated] });
   }
 }
-
-// Express (aktif tutmak için)
-const app = express();
-const port = 3000;
-app.get("/", (req, res) => res.send("Bot çalışıyor!"));
-app.listen(port, () => console.log(`Web server ${port} portunda aktif.`));
-
-client.login(TOKEN);
