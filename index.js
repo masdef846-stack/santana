@@ -27,7 +27,7 @@ const client = new Client({
 
 let activeEvent = null;
 
-// ---------- END EVENT ----------
+// GLOBAL END FUNCTION
 async function endEvent(endTitle, endDesc) {
   if (!activeEvent) return;
 
@@ -40,97 +40,102 @@ async function endEvent(endTitle, endDesc) {
   activeEvent = null;
 }
 
-// ---------- BOT READY ----------
 client.once("ready", () => {
-  console.log(`${client.user.tag} is online!`);
+  console.log(`${client.user.tag} aktif!`);
 
   cron.schedule("30 * * * *", async () => {
     const channel = await client.channels.fetch(CHANNEL_ID);
-    startEvent(channel, "⚡ Informal Activity", "🟢 Join — 🔴 Leave");
+    startEvent(channel, "🔥 Informal Event", "🟩 Join — 🟥 Leave");
   });
 });
 
-// ---------- MESSAGE COMMANDS ----------
 client.on("messageCreate", async (message) => {
   if (!message.content.startsWith("!")) return;
   const args = message.content.split(" ");
   const command = args.shift().toLowerCase();
 
   if (command === "!createevent") {
-    if (activeEvent) return message.reply("⚠️ There is already an active event!");
+    if (activeEvent) return message.reply("⚠️ Already an active event!");
 
-    const title = args[0] ? args[0].replaceAll("_", " ") : "⚡ Custom Activity";
-    const desc = args.slice(1).join(" ") || "🟢 Join — 🔴 Leave";
+    const title = args[0] ? args[0].replaceAll("_", " ") : "🔥 Informal Event";
+    const desc = args.slice(1).join(" ") || "🟩 Join — 🟥 Leave";
 
     startEvent(message.channel, title, desc);
     message.reply("✅ Event created!");
   }
 
   if (command === "!cancel") {
-    if (!activeEvent) return message.reply("❌ No active event exists!");
-    await endEvent("🚫 Event Cancelled", "Closed by an authorized user.");
+    if (!activeEvent) return message.reply("❌ No active event!");
+    await endEvent("🚫 Event cancelled!", "Closed by admin ❌");
     message.reply("🛑 Event cancelled!");
   }
 });
 
-// =========================================
-//          START EVENT — PREMIUM THEME
-// =========================================
+// ========================================================
+// START EVENT  (TASARIM YENİLENDİ)
+// ========================================================
 async function startEvent(channel, title, description) {
   if (activeEvent) return;
 
   const guild = channel.guild;
-
   const informalRole = guild.roles.cache.get("1373714215394873706");
 
-  let participants = informalRole
-    ? informalRole.members.map(m => ({ id: m.id, name: m.displayName }))
-    : [];
+  let participants = [];
+
+  if (informalRole) {
+    participants = informalRole.members.map(m => ({
+      id: m.id,
+      name: m.displayName
+    }));
+  }
 
   const joinButton = new ButtonBuilder()
     .setCustomId("join")
-    .setLabel("Join 🟢")
+    .setLabel("Join 🟩")
     .setStyle(ButtonStyle.Success);
 
   const leaveButton = new ButtonBuilder()
     .setCustomId("leave")
-    .setLabel("Leave 🔴")
+    .setLabel("Leave 🟥")
     .setStyle(ButtonStyle.Danger);
 
   const row = new ActionRowBuilder().addComponents(joinButton, leaveButton);
 
-  const rosterText = participants.length
-    ? participants.map((p, i) => `${i + 1}. <@${p.id}>`).join("\n")
-    : "_No participants yet._";
-
-  // ============================================
-  //   ⬇⬇ NEW ULTRA CLEAN & PREMIUM THEME ⬇⬇
-  // ============================================
-
+  // ------------------------------------------------------
+  // 🆕 YENİ TASARIM EMBED 
+  // ------------------------------------------------------
   const embed = new EmbedBuilder()
-    .setColor("#2b2d31") // Discord slate grey
-    .setThumbnail("https://i.hizliresim.com/sbpz118.png")
-    .setAuthor({
-      name: "Informal Activity System",
-      iconURL: "https://i.hizliresim.com/sbpz118.png"
-    })
-    .setTitle(`✨ ${title}`)
+    .setColor("#2b2d31")
+    .setThumbnail("YOUR_LOGO_URL") 
     .setDescription(
-      "```yaml\n   Informal - Activity Panel\n```\n" +
-      `**🔔 Notification Role:** <@&1373714215394873706>\n\n` +
-      `**📘 Description:**\n${description}\n` +
-      "──────────────────────────"
+`
+> ⚔️ **- Informal Event -**  ${participants.length < 10 ? "**OPEN** ✔️" : "**CLOSED** ✔️"}
+
+**Participants:** ${participants.length}/10
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+### 🗡️ **Main Roster:**  
+${participants.length > 0 
+  ? participants.map((p, i) => `${i + 1}. <@${p.id}>`).join("\n")
+  : "> _Waiting for participants..._"}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+### ⭐ **Subs List:**  
+> _Waiting for substitutes..._
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+🎉 **Have fun!**  
+🕒 ${new Date().toLocaleTimeString("en-US", { hour12: false })}
+`
     )
-    .addFields({
-      name: `🏆 Participant List (${participants.length}/10)`,
-      value: rosterText,
-      inline: false
-    })
-    .setFooter({
-      text: "Santana Family • Activity System",
-      iconURL: "https://i.hizliresim.com/sbpz118.png",
-    })
-    .setTimestamp();
+    .setFooter({ text: "Informal Activity Panel" })
+    .setAuthor({
+      name: "​",
+      iconURL: "https://dummyimage.com/20x600/ff0000/ff0000" // sol kırmızı çizgi
+    });
 
   const msg = await channel.send({ embeds: [embed], components: [row] });
 
@@ -146,49 +151,82 @@ async function startEvent(channel, title, description) {
     if (!interaction.isButton()) return;
 
     const id = interaction.user.id;
+    const member = await interaction.guild.members.fetch(id);
 
     if (interaction.customId === "join") {
       if (activeEvent.participants.find(p => p.id === id)) {
-        return interaction.reply({ content: "You are already in the list!", ephemeral: true });
-      }
-      if (activeEvent.participants.length >= 10) {
-        return interaction.reply({ content: "The participant list is full!", ephemeral: true });
+        return interaction.reply({ content: "Already in the list!", ephemeral: true });
       }
 
-      activeEvent.participants.push({ id });
+      if (activeEvent.participants.length >= 10) {
+        return interaction.reply({ content: "Roster is full!", ephemeral: true });
+      }
+
+      activeEvent.participants.push({ id, name: member.displayName });
     }
 
     if (interaction.customId === "leave") {
       activeEvent.participants = activeEvent.participants.filter(p => p.id !== id);
     }
 
-    await updateEvent();
-    interaction.reply({ content: "Updated!", ephemeral: true });
+    await updateEventMessage();
+    await interaction.reply({ content: "Done!", ephemeral: true });
   });
 
   collector.on("end", async () => {
-    if (activeEvent) await endEvent("⌛ Time Expired", "The event is now closed.");
+    if (activeEvent) {
+      await endEvent("⏰ Time is up!", "Event closed automatically ⌛");
+    }
   });
 
-  // ---------- UPDATE ----------
-  async function updateEvent() {
+  // UPDATE EMBED
+  async function updateEventMessage() {
     const roster = activeEvent.participants.length
       ? activeEvent.participants.map((p, i) => `${i + 1}. <@${p.id}>`).join("\n")
-      : "_No participants yet._";
+      : "> _Waiting for participants..._";
 
-    const updatedEmbed = EmbedBuilder.from(activeEvent.baseEmbed)
-      .setFields({
-        name: `🏆 Participant List (${activeEvent.participants.length}/10)`,
-        value: roster
+    const updatedEmbed = new EmbedBuilder()
+      .setColor("#2b2d31")
+      .setThumbnail("https://i.hizliresim.com/sbpz118.png")
+      .setDescription(
+`
+> ⚔️ **- Informal Event -**  ${activeEvent.participants.length < 10 ? "**OPEN** ✔️" : "**CLOSED** ✔️"}
+
+**Participants:** ${activeEvent.participants.length}/10
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+### 🗡️ **Main Roster:**  
+${roster}
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+### ⭐ **Subs List:**  
+> _Waiting for substitutes..._
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+🎉 **Have fun!**  
+🕒 ${new Date().toLocaleTimeString("en-US", { hour12: false })}
+`
+      )
+      .setFooter({ text: "Informal Activity Panel" })
+      .setAuthor({
+        name: "​",
+        iconURL: "https://dummyimage.com/20x600/ff0000/ff0000"
       });
 
-    await activeEvent.message.edit({ embeds: [updatedEmbed], components: [row] });
+    await activeEvent.message.edit({
+      embeds: [updatedEmbed],
+      components: [row]
+    });
   }
 }
 
-// ---------- EXPRESS ----------
+// EXPRESS KEEP ALIVE
 const app = express();
-app.get("/", (req, res) => res.send("Bot is running!"));
-app.listen(3000, () => console.log("Web server active."));
+const port = 3000;
+app.get("/", (req, res) => res.send("Bot çalışıyor!"));
+app.listen(port, () => console.log(`Web server ${port} portunda aktif.`));
 
 client.login(TOKEN);
