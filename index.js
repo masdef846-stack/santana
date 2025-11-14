@@ -1,11 +1,9 @@
-// INFORMAL EVENT SYSTEM (FINAL VERSION)
-// ✔ No automatic players
-// ✔ Join = adds to roster
-// ✔ First 10 → Main Roster
-// ✔ Others → Subs
-// ✔ Leave removes user
-// ✔ Clean wide UI + red left bar + 🔴 participants emoji
+// INFORMAL EVENT SYSTEM — FINAL + CLEAN + ROSTER FIXED + CRON + !createevent
+// By ChatGPT ♥ For my king.
 
+// ==================================================
+//  IMPORTS
+// ==================================================
 const {
   Client,
   GatewayIntentBits,
@@ -13,7 +11,8 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  Partials
+  Partials,
+  Events
 } = require("discord.js");
 
 const express = require("express");
@@ -34,127 +33,164 @@ const client = new Client({
 });
 
 
+// ==================================================
+//  ACTIVE EVENTS MEMORY
+// ==================================================
+let activeEvent = null; // only 1 panel at a time
+let joined = [];        // users who clicked join
 
-const joinedUsers = new Map(); // Stores users who clicked JOIN
 
-module.exports = {
-    name: "informal",
-    description: "Create an informal event panel.",
-    run: async (client, message) => {
-        const eventId = Date.now();
-        joinedUsers.set(eventId, new Set());
+// ==================================================
+//  CREATE THE EVENT PANEL
+// ==================================================
+async function createEvent(channel) {
+  joined = []; // reset
+  activeEvent = true;
 
-        const joinBtn = new ButtonBuilder()
-            .setCustomId(`join_${eventId}`)
-            .setLabel("Join")
-            .setStyle(ButtonStyle.Success);
+  const joinBtn = new ButtonBuilder()
+    .setCustomId("join")
+    .setLabel("Join")
+    .setStyle(ButtonStyle.Success);
 
-        const leaveBtn = new ButtonBuilder()
-            .setCustomId(`leave_${eventId}`)
-            .setLabel("Leave")
-            .setStyle(ButtonStyle.Danger);
+  const leaveBtn = new ButtonBuilder()
+    .setCustomId("leave")
+    .setLabel("Leave")
+    .setStyle(ButtonStyle.Danger);
 
-        const row = new ActionRowBuilder().addComponents(joinBtn, leaveBtn);
+  const row = new ActionRowBuilder().addComponents(joinBtn, leaveBtn);
 
-        const embed = new EmbedBuilder()
-            .setColor("#2f3136")
-            .setTitle("⚔️・Informal Event - OPEN ✓")
-            .setDescription(
-                `🔴 **Participants:** 0/10\n\n` +
-                `────────────────────────\n\n` +
-                `📝 **Main Roster:**\n` +
-                `*Waiting for players...*\n\n` +
-                `────────────────────────\n\n` +
-                `⭐ **Subs List:**\n` +
-                `*Waiting for substitutes...*\n\n` +
-                `────────────────────────\n\n` +
-                `🎉 **Have fun!**`
-            )
-            .setThumbnail("https://i.imgur.com/OxN7sX8.png") // Replace with your logo URL
-            .setFooter({ text: "Informal Activity Panel" });
+  const embed = new EmbedBuilder()
+    .setColor("#2f3136")
+    .setThumbnail("https://i.imgur.com/OxN7sX8.png") // logo sağ üst
+    .setTitle("⚔️・Informal Event — OPEN ✓")
+    .setDescription(
+      `🔴 **Participants:** 0/10\n\n` +
 
-        const panel = await message.channel.send({ embeds: [embed], components: [row] });
+      `> 📝 **Main Roster:**\n` +
+      `*Waiting for players...*\n\n` +
 
-        const updateEmbed = () => {
-            const users = Array.from(joinedUsers.get(eventId));
-            const main = users.slice(0, 10);
-            const subs = users.slice(10);
+      `> ⭐ **Subs List:**\n` +
+      `*Waiting for substitutes...*\n\n` +
 
-            const participantsCount = users.length;
+      `🎉 Enjoy your activity!`
+    )
+    .setFooter({ text: "Informal Activity Panel" })
+    .setTimestamp();
 
-            const mainText = main.length > 0
-                ? main
-                    .map((u, i) => `${i + 1}. <@${u.id}> | ${u.score}`)
-                    .join("\n")
-                : "*Waiting for players...*";
+  const panel = await channel.send({ embeds: [embed], components: [row] });
+  activeEvent = panel;
 
-            const subsText = subs.length > 0
-                ? subs
-                    .map((u, i) => `${i + 1}. <@${u.id}> | ${u.score}`)
-                    .join("\n")
-                : "*Waiting for substitutes...*";
+  return panel;
+}
 
-            const updated = new EmbedBuilder()
-                .setColor("#2f3136")
-                .setTitle(`⚔️・Informal Event - ${participantsCount >= 10 ? "CLOSED" : "OPEN"} ✓`)
-                .setThumbnail("https://i.imgur.com/OxN7sX8.png") 
-                .setDescription(
-                    `🔴 **Participants:** ${participantsCount}/10\n\n` +
-                    `────────────────────────\n\n` +
-                    `📝 **Main Roster:**\n${mainText}\n\n` +
-                    `────────────────────────\n\n` +
-                    `⭐ **Subs List:**\n${subsText}\n\n` +
-                    `────────────────────────\n\n` +
-                    `🎉 **Have fun!**`
-                )
-                .setFooter({ text: "Informal Activity Panel" });
 
-            panel.edit({ embeds: [updated] });
-        };
+// ==================================================
+//  UPDATE PANEL UI
+// ==================================================
+async function updateEvent() {
+  if (!activeEvent) return;
 
-        client.on(Events.InteractionCreate, async (interaction) => {
-            if (!interaction.isButton()) return;
+  const users = joined;
 
-            if (interaction.customId === `join_${eventId}`) {
-                const user = {
-                    id: interaction.user.id,
-                    score: Math.floor(Math.random() * 300000) + 10000, // Example placeholder (you replace with your score system)
-                };
+  const main = users.slice(0, 10);
+  const subs = users.slice(10);
 
-                const currentSet = joinedUsers.get(eventId);
+  const mainText = main.length
+    ? main.map((u, i) => `${i + 1}. <@${u}>`).join("\n")
+    : "*Waiting for players...*";
 
-                if (currentSet.has(user.id)) {
-                    return interaction.reply({ content: "You are already registered!", ephemeral: true });
-                }
+  const subsText = subs.length
+    ? subs.map((u, i) => `${i + 1}. <@${u}>`).join("\n")
+    : "*Waiting for substitutes...*";
 
-                currentSet.add(user);
+  const embed = new EmbedBuilder()
+    .setColor("#2f3136")
+    .setThumbnail("https://i.imgur.com/OxN7sX8.png")
+    .setTitle(`⚔️・Informal Event — ${users.length >= 10 ? "CLOSED" : "OPEN"} ✓`)
+    .setDescription(
+      `🔴 **Participants:** ${users.length}/10\n\n` +
 
-                updateEmbed();
+      `> 📝 **Main Roster:**\n` +
+      `${mainText}\n\n` +
 
-                return interaction.reply({ content: "You joined the event!", ephemeral: true });
-            }
+      `> ⭐ **Subs List:**\n` +
+      `${subsText}\n\n` +
 
-            if (interaction.customId === `leave_${eventId}`) {
-                const currentSet = joinedUsers.get(eventId);
+      `🎉 Enjoy your activity!`
+    )
+    .setFooter({ text: "Informal Activity Panel" })
+    .setTimestamp();
 
-                const found = Array.from(currentSet).find(u => u.id === interaction.user.id);
-                if (!found) {
-                    return interaction.reply({ content: "You're not in the event!", ephemeral: true });
-                }
+  await activeEvent.edit({ embeds: [embed] });
+}
 
-                currentSet.delete(found);
 
-                updateEmbed();
-                return interaction.reply({ content: "You left the event.", ephemeral: true });
-            }
-        });
-    },
-};
+// ==================================================
+//  INTERACTION HANDLER (JOIN/LEAVE BUTTONS)
+// ==================================================
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (!interaction.isButton()) return;
+  if (!activeEvent) return;
 
-// EXPRESS KEEP ALIVE
+  const id = interaction.user.id;
+
+  if (interaction.customId === "join") {
+    if (!joined.includes(id)) {
+      joined.push(id);
+    }
+    await updateEvent();
+    return interaction.reply({ content: "You joined the event!", ephemeral: true });
+  }
+
+  if (interaction.customId === "leave") {
+    joined = joined.filter(u => u !== id);
+    await updateEvent();
+    return interaction.reply({ content: "You left the event.", ephemeral: true });
+  }
+});
+
+
+// ==================================================
+//  MESSAGE COMMAND (!createevent)
+// ==================================================
+client.on("messageCreate", async (message) => {
+  if (!message.content.startsWith("!createevent")) return;
+  if (activeEvent) return message.reply("❌ There is already an active event panel.");
+
+  await createEvent(message.channel);
+
+  return message.reply("✅ Event panel created!");
+});
+
+
+// ==================================================
+//  CRON (EVERY 30 MINUTES)
+// ==================================================
+client.once("ready", () => {
+  console.log(`${client.user.tag} is online!`);
+
+  cron.schedule("30 * * * *", async () => {
+    const channel = await client.channels.fetch(CHANNEL_ID);
+
+    // kill old panel
+    activeEvent = null;
+    joined = [];
+
+    await createEvent(channel);
+  });
+});
+
+
+// ==================================================
+//  EXPRESS KEEP-ALIVE
+// ==================================================
 const app = express();
 const port = 3000;
 app.get("/", (req, res) => res.send("Bot çalışıyor!"));
 app.listen(port, () => console.log(`Web server ${port} portunda aktif.`));
 
+
+// ==================================================
+//  LOGIN
+// ==================================================
 client.login(TOKEN);
