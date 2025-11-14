@@ -106,7 +106,7 @@ async function startEvent(channel, title, description) {
   // ------------------------------------------------------
   const embed = new EmbedBuilder()
     .setColor("#2b2d31")
-    .setThumbnail("YOUR_LOGO_URL") 
+    .setThumbnail("https://i.hizliresim.com/sbpz118.png") 
     .setDescription(
 `
 > ⚔️ **- Informal Event -**  ${participants.length < 10 ? "**OPEN** ✔️" : "**CLOSED** ✔️"}
