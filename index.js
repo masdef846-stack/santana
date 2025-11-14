@@ -14,6 +14,9 @@ const {
     Events,
 } = require("discord.js");
 
+const express = require("express");
+
+
 const joinedUsers = new Map(); // Stores users who clicked JOIN
 
 module.exports = {
