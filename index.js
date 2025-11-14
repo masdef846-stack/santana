@@ -61,7 +61,7 @@ async function createEvent(channel) {
 
   const embed = new EmbedBuilder()
     .setColor("#2f3136")
-    .setThumbnail("https://i.imgur.com/OxN7sX8.png") // logo sağ üst
+    .setThumbnail("https://i.hizliresim.com/sbpz118.png") // logo sağ üst
     .setTitle("⚔️・Informal Event — OPEN ✓")
     .setDescription(
       `🔴 **Participants:** 0/10\n\n` +
@@ -105,7 +105,7 @@ async function updateEvent() {
 
   const embed = new EmbedBuilder()
     .setColor("#2f3136")
-    .setThumbnail("https://i.imgur.com/OxN7sX8.png")
+    .setThumbnail("https://i.hizliresim.com/sbpz118.png")
     .setTitle(`⚔️・Informal Event — ${users.length >= 10 ? "CLOSED" : "OPEN"} ✓`)
     .setDescription(
       `🔴 **Participants:** ${users.length}/10\n\n` +
