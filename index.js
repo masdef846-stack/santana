@@ -7,14 +7,32 @@
 // ✔ Clean wide UI + red left bar + 🔴 participants emoji
 
 const {
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    EmbedBuilder,
-    Events,
+  Client,
+  GatewayIntentBits,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  Partials
 } = require("discord.js");
 
 const express = require("express");
+const cron = require("node-cron");
+require("dotenv").config();
+
+const TOKEN = process.env.TOKEN;
+const CHANNEL_ID = process.env.CHANNEL_ID;
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.MessageContent
+  ],
+  partials: [Partials.Message, Partials.Channel],
+});
+
 
 
 const joinedUsers = new Map(); // Stores users who clicked JOIN
